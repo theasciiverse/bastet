@@ -183,7 +183,7 @@ namespace Bastet{
 
     BorderedWindow w(d.y,d.x);
     wattrset((WINDOW *)w,COLOR_PAIR(20));
-    mvwprintw(w,0,0,message.c_str());
+    mvwprintw(w,0,0,"%s",message.c_str());
     w.RedrawBorder();
     wrefresh(w);
     PrepareUiGetch();
@@ -200,7 +200,7 @@ namespace Bastet{
     d.y+=3;
     BorderedWindow w(d.y,d.x);
     wattrset((WINDOW *)w,COLOR_PAIR(20));
-    mvwprintw(w,0,0,message.c_str());
+    mvwprintw(w,0,0,"%s",message.c_str());
     w.RedrawBorder();
     wrefresh(w);
     PrepareUiGetch();
@@ -221,7 +221,7 @@ namespace Bastet{
 
     BorderedWindow w(d.y,d.x);
     wattrset((WINDOW *)w,COLOR_PAIR(20));
-    mvwprintw(w,0,0,message.c_str());
+    mvwprintw(w,0,0,"%s",message.c_str());
     w.RedrawBorder();
     wrefresh(w);
     PrepareUiGetch();
@@ -239,7 +239,7 @@ namespace Bastet{
     BorderedWindow w(d.y,d.x);
     wattrset((WINDOW *)w,COLOR_PAIR(20));
     for(size_t i=0;i<choices.size();++i){
-      mvwprintw(w,i,4,choices[i].c_str());
+      mvwprintw(w,i,4,"%s",choices[i].c_str());
     }
     w.RedrawBorder();
     wrefresh(w);
@@ -247,23 +247,23 @@ namespace Bastet{
     size_t chosen=0;
     int ch;
     bool done=false;
-    mvwprintw(w,chosen,1,"-> ");
+    mvwprintw(w,chosen,1,"%s","-> ");
     wrefresh(w);
     do{
       ch=getch();
       switch(ch){
       case KEY_UP:
 	if(chosen==0) break;
-	mvwprintw(w,chosen,1,"   ");
+	mvwprintw(w,chosen,1,"%s","   ");
 	chosen--;
-	mvwprintw(w,chosen,1,"-> ");
+	mvwprintw(w,chosen,1,"%s","-> ");
 	wrefresh(w);
 	break;
       case KEY_DOWN:
 	if(chosen==choices.size()-1) break;
-	mvwprintw(w,chosen,1,"   ");
+	mvwprintw(w,chosen,1,"%s","   ");
 	chosen++;
-	mvwprintw(w,chosen,1,"-> ");
+	mvwprintw(w,chosen,1,"%s","-> ");
 	wrefresh(w);
 	break;
       case 13: //ENTER
@@ -290,7 +290,7 @@ namespace Bastet{
       Dot d=BoundingRect(msg );
       BorderedWindow w(d.y,d.x);
       wattrset((WINDOW *)w,COLOR_PAIR(20));
-      mvwprintw(w,0,0,msg.c_str());
+      mvwprintw(w,0,0,"%s",msg.c_str());
       w.RedrawBorder();
       ch=getch();
       switch(ch){
@@ -309,15 +309,15 @@ namespace Bastet{
     _scoreWin.RedrawBorder();
 
     wattrset((WINDOW*)_nextWin,COLOR_PAIR(17));
-    mvwprintw(_nextWin,0,0," Next block:");
+    mvwprintw(_nextWin,0,0,"%s"," Next block:");
     wrefresh(_nextWin);
 
     wattrset((WINDOW*)_scoreWin,COLOR_PAIR(17));
-    mvwprintw(_scoreWin,1,0,"Score:");
+    mvwprintw(_scoreWin,1,0,"%s","Score:");
     wattrset((WINDOW*)_scoreWin,COLOR_PAIR(18));
-    mvwprintw(_scoreWin,3,0,"Lines:");
+    mvwprintw(_scoreWin,3,0,"%s","Lines:");
     wattrset((WINDOW*)_scoreWin,COLOR_PAIR(19));
-    mvwprintw(_scoreWin,5,0,"Level:");
+    mvwprintw(_scoreWin,5,0,"%s","Level:");
     wrefresh(_scoreWin);
   }
 

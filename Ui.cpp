@@ -25,6 +25,8 @@
 #include <chrono>
 #include <cstdio>
 #include <cstdlib>
+#include <clocale>
+#include <ctime>
 #include <boost/format.hpp>
 #include <boost/foreach.hpp>
 #include <boost/algorithm/string.hpp>
@@ -134,6 +136,9 @@ namespace Bastet{
   }
 
   Curses::Curses(){
+    //the terminal's character set, so wide curses draws the boxes with
+    //its own line characters instead of switching to the VT100 set
+    setlocale(LC_ALL,"");
     if(initscr()==NULL){
       fprintf(stderr,"bastet: error while initializing graphics (ncurses library).\n");
       exit(1);

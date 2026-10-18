@@ -21,8 +21,15 @@
 
 #include "Block.hpp"
 #include <deque>
+#include <cstdlib>
 
 namespace Bastet{
+
+#ifdef _WIN32
+  //Windows has no random()/srandom(); rand() does for picking blocks
+  inline long random(){return std::rand();}
+  inline void srandom(unsigned seed){std::srand(seed);}
+#endif
 
   class Well;
   //queue of blocks to appear on the screen

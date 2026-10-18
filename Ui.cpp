@@ -44,23 +44,45 @@ namespace Bastet{
     endwin();
   }
 
+  ///Enter arrives as '\r' (nonl() is on), '\n' or KEY_ENTER, depending
+  ///on the terminal and the key; all three count as the same key
+  static int SameKey(int ch){
+    return (ch=='\r' || ch=='\n' || ch==KEY_ENTER) ? KEY_ENTER : ch;
+  }
+
+  ///empties the char buffer; a resize found in it is kept for the caller
+  static void FlushKeys(){
+    bool resized=false;
+    int ch;
+    while((ch=getch())!=ERR)
+      if(ch==KEY_RESIZE) resized=true;
+    if(resized) ungetch(KEY_RESIZE);
+  }
+
   void PrepareUiGetch(){ ///gets ready for a getch() in the UI, i.e. empties the char buffer, sets blocking IO
     nodelay(stdscr,TRUE);
-    while(getch()!=ERR);
+    FlushKeys();
     nodelay(stdscr,FALSE);
   }
   
-  BorderedWindow::BorderedWindow(int height, int width, int y, int x){
+  BorderedWindow::BorderedWindow(int height, int width, int y, int x):
+    _window(NULL),_border(NULL),_height(height),_width(width){
+    Place(y,x);
+  }
+
+  void BorderedWindow::Place(int y, int x){
     if(y==-1 || x==-1){
       int screen_h, screen_w;
       getmaxyx(stdscr,screen_h, screen_w);
       if(y==-1)
-	y=(screen_h-height-2)/2-1;
+	y=max(0,(screen_h-_height-2)/2);
       if(x==-1)
-	x=(screen_w-width-2)/2-1;
+	x=max(0,(screen_w-_width-2)/2);
     }
-    _border=newwin(height+2,width+2,y,x);
-    _window=derwin(_border,height,width,1,1); 
+    if(_window) delwin(_window);
+    if(_border) delwin(_border);
+    _border=newwin(_height+2,_width+2,y,x);
+    _window=_border ? derwin(_border,_height,_width,1,1) : NULL;
     //    wattrset(_border,COLOR_PAIR(21));
     RedrawBorder();
   }
@@ -156,15 +178,52 @@ namespace Bastet{
     /* Set random seed. */
     srandom(time(NULL)+37);
   }
+  //the well with the next block and score boxes to its right
+  static const int LayoutRows=WellHeight+2;
+  static const int LayoutCols=2*WellWidth+2+1+14+2;
 
   Ui::Ui():
     _level(0),
-    _wellWin(WellHeight,2*WellWidth),
-    _nextWin(5,14,_wellWin.GetMinY(),_wellWin.GetMaxX()+1),
-    _scoreWin(7,14,_nextWin.GetMaxY(),_nextWin.GetMinX())
+    _points(0),
+    _lines(0),
+    _next(-1),
+    _played(false),
+    _wellWin(WellHeight,2*WellWidth,0,0),
+    _nextWin(5,14,0,0),
+    _scoreWin(7,14,0,0)
   {
+    int screen_h, screen_w;
+    getmaxyx(stdscr,screen_h,screen_w);
+    if(screen_h<LayoutRows || screen_w<LayoutCols){
+      endwin();
+      fprintf(stderr,"bastet: the terminal is %dx%d, the game needs at least %dx%d.\n",
+	      screen_w,screen_h,LayoutCols,LayoutRows);
+      exit(1);
+    }
     BOOST_FOREACH(ColorWellLine &a, _colors)
       a.fill(0);
+    Layout();
+  }
+
+  void Ui::Layout(){
+    int screen_h, screen_w;
+    getmaxyx(stdscr,screen_h,screen_w);
+    int y=max(0,(screen_h-LayoutRows)/2);
+    int x=max(0,(screen_w-LayoutCols)/2);
+    _wellWin.Place(y,x);
+    _nextWin.Place(_wellWin.GetMinY(),_wellWin.GetMaxX()+1);
+    _scoreWin.Place(_nextWin.GetMaxY(),_nextWin.GetMinX());
+  }
+
+  void Ui::Resized(){
+#ifdef PDCURSES
+    resize_term(0,0);
+#endif
+    int screen_h, screen_w;
+    getmaxyx(stdscr,screen_h,screen_w);
+    //in a terminal too small for the game the old windows stay, clipped
+    if(screen_h>=LayoutRows && screen_w>=LayoutCols)
+      Layout();
   }
 
   Dot BoundingRect(const std::string &message){ //returns x and y of the minimal rectangle containing the given string
@@ -178,102 +237,113 @@ namespace Bastet{
   }
 
   void Ui::MessageDialog(const std::string &message){
-    RedrawStatic();
+    while(true){
+      RedrawStatic();
 
-    Dot d=BoundingRect(message);
+      Dot d=BoundingRect(message);
 
-    BorderedWindow w(d.y,d.x);
-    wattrset((WINDOW *)w,COLOR_PAIR(20));
-    mvwprintw(w,0,0,"%s",message.c_str());
-    w.RedrawBorder();
-    wrefresh(w);
-    PrepareUiGetch();
-    int ch;
-    do{
-      ch=getch();
+      BorderedWindow w(d.y,d.x);
+      wattrset((WINDOW *)w,COLOR_PAIR(20));
+      mvwprintw(w,0,0,"%s",message.c_str());
+      w.RedrawBorder();
+      wrefresh(w);
+      PrepareUiGetch();
+      int ch;
+      do{
+	ch=getch();
+      }
+      while(ch!=' ' && SameKey(ch)!=KEY_ENTER && ch!=KEY_RESIZE);
+      if(ch!=KEY_RESIZE) return;
+      Resized();
     }
-    while(ch!=' ' && ch!=13); //13=return key!=KEY_ENTER, it seems
   }
 
   std::string Ui::InputDialog(const std::string &message){
-    RedrawStatic();
-    Dot d=BoundingRect(message);
-    d.y+=3;
-    BorderedWindow w(d.y,d.x);
-    wattrset((WINDOW *)w,COLOR_PAIR(20));
-    mvwprintw(w,0,0,"%s",message.c_str());
-    w.RedrawBorder();
-    wrefresh(w);
-    PrepareUiGetch();
-    //nocbreak();
-    echo();
-    curs_set(1);
-    char buf[51];
-    mvwgetnstr(w,d.y-2,1,buf,50);
-    curs_set(0);
-    noecho();
-    return string(buf);
+    while(true){
+      RedrawStatic();
+      Dot d=BoundingRect(message);
+      d.y+=3;
+      BorderedWindow w(d.y,d.x);
+      wattrset((WINDOW *)w,COLOR_PAIR(20));
+      mvwprintw(w,0,0,"%s",message.c_str());
+      w.RedrawBorder();
+      wrefresh(w);
+      PrepareUiGetch();
+      //nocbreak();
+      echo();
+      curs_set(1);
+      char buf[51]={0};
+      int ret=mvwgetnstr(w,d.y-2,1,buf,50);
+      curs_set(0);
+      noecho();
+      if(ret!=KEY_RESIZE) return string(buf);
+      Resized();
+    }
   }
   
   int Ui::KeyDialog(const std::string &message){
-    RedrawStatic();
+    while(true){
+      RedrawStatic();
 
-    Dot d=BoundingRect(message);
+      Dot d=BoundingRect(message);
 
-    BorderedWindow w(d.y,d.x);
-    wattrset((WINDOW *)w,COLOR_PAIR(20));
-    mvwprintw(w,0,0,"%s",message.c_str());
-    w.RedrawBorder();
-    wrefresh(w);
-    PrepareUiGetch();
-    return getch();
+      BorderedWindow w(d.y,d.x);
+      wattrset((WINDOW *)w,COLOR_PAIR(20));
+      mvwprintw(w,0,0,"%s",message.c_str());
+      w.RedrawBorder();
+      wrefresh(w);
+      PrepareUiGetch();
+      int ch=getch();
+      if(ch!=KEY_RESIZE) return ch;
+      Resized();
+    }
   }
   
   int Ui::MenuDialog(const vector<string> &choices){
-    RedrawStatic();
     size_t width=0;
     BOOST_FOREACH(const string &s, choices){
       width=max(width,s.size());
     }
-
     Dot d={int(width+5),int(choices.size())};
-    BorderedWindow w(d.y,d.x);
-    wattrset((WINDOW *)w,COLOR_PAIR(20));
-    for(size_t i=0;i<choices.size();++i){
-      mvwprintw(w,i,4,"%s",choices[i].c_str());
-    }
-    w.RedrawBorder();
-    wrefresh(w);
-    PrepareUiGetch();
     size_t chosen=0;
-    int ch;
-    bool done=false;
-    mvwprintw(w,chosen,1,"%s","-> ");
-    wrefresh(w);
-    do{
-      ch=getch();
-      switch(ch){
-      case KEY_UP:
-	if(chosen==0) break;
-	mvwprintw(w,chosen,1,"%s","   ");
-	chosen--;
-	mvwprintw(w,chosen,1,"%s","-> ");
-	wrefresh(w);
-	break;
-      case KEY_DOWN:
-	if(chosen==choices.size()-1) break;
-	mvwprintw(w,chosen,1,"%s","   ");
-	chosen++;
-	mvwprintw(w,chosen,1,"%s","-> ");
-	wrefresh(w);
-	break;
-      case 13: //ENTER
-      case ' ':
-	done=true;
-	break;
+
+    while(true){
+      RedrawStatic();
+      BorderedWindow w(d.y,d.x);
+      wattrset((WINDOW *)w,COLOR_PAIR(20));
+      for(size_t i=0;i<choices.size();++i){
+	mvwprintw(w,i,4,"%s",choices[i].c_str());
       }
-    } while(!done);
-    return chosen;
+      w.RedrawBorder();
+      wrefresh(w);
+      PrepareUiGetch();
+      int ch;
+      mvwprintw(w,chosen,1,"%s","-> ");
+      wrefresh(w);
+      while((ch=getch())!=KEY_RESIZE){
+	switch(ch){
+	case KEY_UP:
+	  if(chosen==0) break;
+	  mvwprintw(w,chosen,1,"%s","   ");
+	  chosen--;
+	  mvwprintw(w,chosen,1,"%s","-> ");
+	  wrefresh(w);
+	  break;
+	case KEY_DOWN:
+	  if(chosen==choices.size()-1) break;
+	  mvwprintw(w,chosen,1,"%s","   ");
+	  chosen++;
+	  mvwprintw(w,chosen,1,"%s","-> ");
+	  wrefresh(w);
+	  break;
+	case ' ':
+	  return chosen;
+	default:
+	  if(SameKey(ch)==KEY_ENTER) return chosen;
+	}
+      }
+      Resized();
+    }
   }
   
   void Ui::ChooseLevel(){
@@ -320,6 +390,9 @@ namespace Bastet{
     wattrset((WINDOW*)_scoreWin,COLOR_PAIR(19));
     mvwprintw(_scoreWin,5,0,"%s","Level:");
     wrefresh(_scoreWin);
+    //the boxes' contents, lost when they were placed again after a resize
+    if(_played) RedrawScore();
+    if(_next>=0) RedrawNext(BlockType(_next));
   }
 
   //gravity: microseconds per row at each level
@@ -328,12 +401,6 @@ namespace Bastet{
   static long long NowMs(){
     using namespace std::chrono;
     return duration_cast<milliseconds>(steady_clock::now().time_since_epoch()).count();
-  }
-
-  ///Enter arrives as '\r' (nonl() is on), '\n' or KEY_ENTER, depending
-  ///on the terminal and the key; all three count as the same key
-  static int SameKey(int ch){
-    return (ch=='\r' || ch=='\n' || ch==KEY_ENTER) ? KEY_ENTER : ch;
   }
 
   void Ui::DropBlock(BlockType b, Well *w){
@@ -361,7 +428,11 @@ namespace Bastet{
       }
       else{ //keypress
 	ch=SameKey(ch);
-	if(ch==SameKey(keys->Left))
+	if(ch==KEY_RESIZE){
+	  Resized();
+	  RedrawStatic();
+	}
+	else if(ch==SameKey(keys->Left))
 	  p.MoveIfPossible(Left,b,w);
 	else if(ch==SameKey(keys->Right))
 	  p.MoveIfPossible(Right,b,w);
@@ -498,6 +569,8 @@ namespace Bastet{
     _lines=0;
     BOOST_FOREACH(ColorWellLine &a, _colors)
       a.fill(0);
+    _next=-1;
+    _played=true;
     RedrawStatic();
     RedrawScore();
     Well w;
@@ -507,10 +580,19 @@ namespace Bastet{
       ClearNext();
     try{
       while(true){
-	while(getch()!=ERR); //ignores the keys pressed during the next block calculation
+	//ignores the keys pressed during the next block calculation,
+	//but not a resize
+	FlushKeys();
+	if(getch()==KEY_RESIZE){
+	  Resized();
+	  RedrawStatic();
+	}
 	BlockType current=q.front();
 	q.pop_front();
-	if(!q.empty()) RedrawNext(q.front());
+	if(!q.empty()){
+	  _next=q.front();
+	  RedrawNext(q.front());
+	}
 	DropBlock(current,&w);
 	q.push_back(bc->GetNext(&w,q));
       }

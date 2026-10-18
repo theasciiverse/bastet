@@ -35,9 +35,11 @@ namespace Bastet{
   private:
     WINDOW *_window;
     WINDOW *_border;
+    int _height, _width;
   public:
     BorderedWindow(int height, int width, int y=-1, int x=-1); ///w and h are "inner" dimensions, excluding the border. y and x are "outer", including the border. y=-1,x=-1 means "center"
     ~BorderedWindow();
+    void Place(int y=-1, int x=-1); ///makes the window again at y,x (outer); -1 centres, as in the constructor
     operator WINDOW *(); //returns the inner window
     void RedrawBorder();
     int GetMinX(); ///these are including border
@@ -72,11 +74,15 @@ namespace Bastet{
     void HandleHighScores(difficulty_t diff); ///if needed, asks name for highscores
     void ShowHighScores(difficulty_t diff);
     void CustomizeKeys();
+    void Layout(); ///places the well and the boxes beside it in the middle of the screen
+    void Resized(); ///after KEY_RESIZE: placed again if the game fits
   private:
     //    difficulty_t _difficulty; //unused for now
     int _level;
     int _points;
     int _lines;
+    int _next; //the block in the preview, -1 if none
+    bool _played; //a game was played: the score box shows its result
     Curses _curses;
     BorderedWindow _wellWin;
     BorderedWindow _nextWin;

@@ -3,3 +3,6 @@ depend
 Test
 *.o
 *~
+out/
+stage/
+dist/

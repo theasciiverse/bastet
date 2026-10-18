@@ -33,14 +33,15 @@ exits the game without any further prompt
 The game includes two playing modes. In the second one (harder), you do not get the preview of the next tetromino, and the algorithm is modified to take advantage of this.
 
 .SH FILES
-.I $(HOME)/.bastetrc
-User options
+.I $XDG_DATA_HOME/bastet/bastetrc
+User options (key bindings)
 
-.I $(HOME)/.bastetscores
-User-specific high scores file (used only if the system high scores file is unavailable)
+.I $XDG_DATA_HOME/bastet/scores
+High scores
 
-.I /var/games/bastet.scores2
-System-wide high scores for bastet.
+When XDG_DATA_HOME is not set, the folder is ~/.local/share/bastet;
+on Windows it is %APPDATA%\\bastet. If these files do not exist yet,
+bastet reads ~/.bastetrc and ~/.bastetscores from older versions once.
 
 .SH OPTIONS
 None.

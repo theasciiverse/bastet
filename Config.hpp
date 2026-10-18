@@ -56,9 +56,8 @@ namespace Bastet{
     int InsertHighScore(int score, const std::string &scorer); //returns position (1 to HowManyHighScores), -1 if you don't make into the list
   };
 
-  extern const std::string RcFileName;
-  extern const std::string LocalHighScoresFileName;
-  extern const std::string GlobalHighScoresFileName;
+  extern const std::string RcFileName; //both in the player's data folder
+  extern const std::string HighScoresFileName;
 
   class Config{
   private:
@@ -69,6 +68,7 @@ namespace Bastet{
    ~Config();
     Keys *GetKeys();
     HighScores *GetHighScores(int difficulty);
+    void Save(); ///writes the keys and the high scores
     std::string GetConfigFileName() const;
     std::string GetHighScoresFileName() const;
   };

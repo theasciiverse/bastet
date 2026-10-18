@@ -18,27 +18,30 @@
 
 #include "Config.hpp"
 
-#include <boost/program_options.hpp>
 #include <boost/foreach.hpp>
 #include <boost/format.hpp>
-#include <boost/algorithm/string.hpp>
-#include <boost/assign.hpp>
 #include <curses.h>
+#include <cassert>
+#include <cerrno>
 #include <cstdlib>
 #include <fstream>
-
-//DBG
-#include <iostream>
+#include <map>
+#include <sys/stat.h>
+#ifdef _WIN32
+#include <direct.h>
+#endif
 
 using namespace std;
 using namespace boost;
-namespace po=boost::program_options;
 
 namespace Bastet{
+
   const size_t HowManyHighScores=10;
-  const std::string RcFileName="/.bastetrc";
-  const std::string LocalHighScoresFileName="/.bastetscores";
-  const std::string GlobalHighScoresFileName="/var/games/bastet.scores2";
+  const std::string RcFileName="bastetrc";
+  const std::string HighScoresFileName="scores";
+  //read once, when the new files do not exist yet
+  const std::string LegacyRcFileName="/.bastetrc";
+  const std::string LegacyHighScoresFileName="/.bastetscores";
 
   bool HighScores::Qualifies(int score){
     stable_sort(begin(),end());
@@ -57,133 +60,158 @@ namespace Bastet{
 
   Config config; //singleton instance
 
-  std::string Config::GetConfigFileName() const{
-    return string(getenv("HOME"))+RcFileName;
+  static const char *Separator(){
+#ifdef _WIN32
+    return "\\";
+#else
+    return "/";
+#endif
   }
 
-  class CannotOpenFile{};
+  static void MakeDirs(const std::string &path){ //like mkdir -p
+    for(size_t i=1;i<=path.size();++i){
+      if(i==path.size() || path[i]=='/' || path[i]=='\\'){
+	std::string part=path.substr(0,i);
+#ifdef _WIN32
+	if(part.size()==2 && part[1]==':') continue; //drive letter
+	_mkdir(part.c_str());
+#else
+	mkdir(part.c_str(),0755);
+#endif
+      }
+    }
+  }
+
+  ///the player's data folder: $XDG_DATA_HOME/bastet, else
+  ///~/.local/share/bastet; %APPDATA%\bastet on Windows. Created if needed.
+  static std::string DataDir(){
+    static std::string result;
+    if(!result.empty()) return result;
+    std::string base;
+#ifdef _WIN32
+    const char *appdata=getenv("APPDATA");
+    base=(appdata && *appdata) ? appdata : ".";
+#else
+    const char *xdg=getenv("XDG_DATA_HOME");
+    const char *home=getenv("HOME");
+    if(xdg && *xdg) base=xdg;
+    else if(home && *home) base=std::string(home)+"/.local/share";
+    else base=".";
+#endif
+    result=base+Separator()+"bastet";
+    MakeDirs(result);
+    return result;
+  }
+
+  static std::string Home(){
+    const char *home=getenv("HOME");
+    return (home && *home) ? home : "";
+  }
+
+  static std::string Trim(const std::string &s){
+    size_t b=s.find_first_not_of(" \t\r\n");
+    if(b==std::string::npos) return "";
+    size_t e=s.find_last_not_of(" \t\r\n");
+    return s.substr(b,e-b+1);
+  }
+
+  typedef std::map<std::string,std::string> Settings;
+
+  ///reads "key = value" lines, '#' starts a comment line; the format
+  ///Boost.Program_options wrote, so older files still read
+  static bool ReadSettings(const std::string &fileName, Settings &out){
+    ifstream ifs(fileName.c_str());
+    if(ifs.fail()) return false;
+    std::string line;
+    while(getline(ifs,line)){
+      line=Trim(line);
+      if(line.empty() || line[0]=='#') continue;
+      size_t eq=line.find('=');
+      if(eq==std::string::npos) continue;
+      out[Trim(line.substr(0,eq))]=Trim(line.substr(eq+1));
+    }
+    return true;
+  }
+
+  static int GetInt(const Settings &s, const std::string &key, int def){
+    Settings::const_iterator it=s.find(key);
+    if(it==s.end()) return def;
+    char *end;
+    errno=0;
+    long v=strtol(it->second.c_str(),&end,10);
+    if(end==it->second.c_str() || *end!='\0' || errno) return def;
+    return int(v);
+  }
+
+  static std::string GetName(const Settings &s, const std::string &key, const std::string &def){
+    Settings::const_iterator it=s.find(key);
+    if(it==s.end()) return def;
+    std::string v=it->second;
+    //bastet 0.43.2 and older quoted names when writing but not when
+    //reading, so names in old files may carry pairs of quotes
+    while(v.size()>=2 && v[0]=='"' && v[v.size()-1]=='"')
+      v=v.substr(1,v.size()-2);
+    return v;
+  }
+
+  std::string Config::GetConfigFileName() const{
+    return DataDir()+Separator()+RcFileName;
+  }
 
   std::string Config::GetHighScoresFileName() const{
-    static std::string result; //gets cached
-    if(!result.empty()) return result;
-    
-    //tries the global one first and sees if it's writable
-    fstream ofs(GlobalHighScoresFileName.c_str());
-    if(!ofs.fail()){
-      result=GlobalHighScoresFileName;
-    }
-    ofs.close();
-
-    //falls back to the user-specific file
-    string s=string(getenv("HOME"))+LocalHighScoresFileName;
-    if(result.empty()){
-      cerr<<boost::str(boost::format("bastet: using a user-specific high scores file: %1%\nas the global high scores file %2% is not writable\n") % s % GlobalHighScoresFileName);
-      fstream ofs2(s.c_str());
-      if(!ofs2.fail()){
-
-	result=s;
-      }
-      ofs2.close();
-    }
-    
-    //tries to create the local high scores
-    if(result.empty()){
-      ofstream ofs3(s.c_str());
-      if(!ofs3.fail()){
-	cerr<<boost::str(boost::format("bastet: creating a new user-specific high scores file %1%\n") % s);
-	result=s;
-      }
-      ofs3.close();
-    }
-    if(result.empty())
-      throw(CannotOpenFile());
-    else return result;
+    return DataDir()+Separator()+HighScoresFileName;
   }
 
   Config::Config(){
-    po::options_description keyMappingOpts("Key mappings");
-    keyMappingOpts.add_options()
-      ("Down",po::value<int>()->default_value(KEY_DOWN),"Down key")
-      ("Left",po::value<int>()->default_value(KEY_LEFT),"Left key")
-      ("Right",po::value<int>()->default_value(KEY_RIGHT),"Right key")
-      ("RotateCW",po::value<int>()->default_value(' '),"Clockwise turn key")
-      ("RotateCCW",po::value<int>()->default_value(KEY_UP),"Counterclockwise turn key")
-      ("Drop",po::value<int>()->default_value(KEY_ENTER),"Drop tetromino key")
-      ("Pause",po::value<int>()->default_value('p'),"Pause key")
-      ;
+    Settings options;
+    if(!ReadSettings(GetConfigFileName(),options) && !Home().empty())
+      ReadSettings(Home()+LegacyRcFileName,options);
+    _keys.Down=GetInt(options,"Down",KEY_DOWN);
+    _keys.Left=GetInt(options,"Left",KEY_LEFT);
+    _keys.Right=GetInt(options,"Right",KEY_RIGHT);
+    _keys.RotateCW=GetInt(options,"RotateCW",' ');
+    _keys.RotateCCW=GetInt(options,"RotateCCW",KEY_UP);
+    _keys.Drop=GetInt(options,"Drop",KEY_ENTER);
+    _keys.Pause=GetInt(options,"Pause",'p');
 
-    po::options_description highScoresOpts("High scores");
+    Settings highScores;
+    if(!ReadSettings(GetHighScoresFileName(),highScores) && !Home().empty())
+      ReadSettings(Home()+LegacyHighScoresFileName,highScores);
     boost::format scorer("Scorer%02d%02d");
     boost::format score("Score%02d%02d");
-    for(int difficulty=0;difficulty<num_difficulties;++difficulty)
-      for(size_t i=0;i<HowManyHighScores;i++){
-	highScoresOpts.add_options()
-	  (str(scorer % difficulty % i).c_str(),po::value<string>()->default_value("No one played yet"),"Name of high scorer")
-	  (str(score % difficulty % i).c_str(),po::value<int>()->default_value(0),"High score (points)")
-	  ;
-      }
-    
-    boost::program_options::variables_map _options;
-    boost::program_options::variables_map _highScores;
-
-    ifstream ifs(GetConfigFileName().c_str());
-    po::store(po::parse_config_file(ifs,keyMappingOpts),_options);
-
-    _keys.Down=_options["Down"].as<int>();
-    _keys.Left=_options["Left"].as<int>();
-    _keys.Right=_options["Right"].as<int>();
-    _keys.RotateCW=_options["RotateCW"].as<int>();
-    _keys.RotateCCW=_options["RotateCCW"].as<int>();
-    _keys.Drop=_options["Drop"].as<int>();
-    _keys.Pause=_options["Pause"].as<int>();
-
-    string s=GetHighScoresFileName();
-    ifstream ifs2(s.c_str());
-    po::store(po::parse_config_file(ifs2,highScoresOpts),_highScores);
-    
     for(int difficulty=0;difficulty<num_difficulties;difficulty++){
       for(size_t i=0;i<HowManyHighScores;++i)
-	_hs[difficulty].push_back((HighScore){_highScores[str(score % difficulty % i)].as<int>(),
-	      _highScores[str(scorer % difficulty % i)].as<string>()});
-    stable_sort(_hs[difficulty].begin(),_hs[difficulty].end()); //should not be needed but...
+	_hs[difficulty].push_back((HighScore){GetInt(highScores,str(score % difficulty % i),0),
+	      GetName(highScores,str(scorer % difficulty % i),"No one played yet")});
+      stable_sort(_hs[difficulty].begin(),_hs[difficulty].end()); //should not be needed but...
     }
   }
-  
+
   Keys *Config::GetKeys(){
     return &_keys;
   }
-  
+
   HighScores *Config::GetHighScores(int difficulty){
     assert(difficulty>=0 && difficulty<num_difficulties);
     return &(_hs[difficulty]);
   }
-  
-  Config::~Config(){
-    /**
-       The config and highscore files are written down at each game, even if it is not needed, but who cares for now
-     */
-    boost::program_options::variables_map _options;
 
-    _options.insert(make_pair("Down",po::variable_value(_keys.Down,false)));
-    _options.insert(make_pair("Left",po::variable_value(_keys.Left,false)));
-    _options.insert(make_pair("Right",po::variable_value(_keys.Right,false)));
-    _options.insert(make_pair("RotateCW",po::variable_value(_keys.RotateCW,false)));
-    _options.insert(make_pair("RotateCCW",po::variable_value(_keys.RotateCCW,false)));
-    _options.insert(make_pair("Drop",po::variable_value(_keys.Drop,false)));
-    _options.insert(make_pair("Pause",po::variable_value(_keys.Pause,false)));
-
+  void Config::Save(){
     ofstream ofs(GetConfigFileName().c_str());
     ofs<<"# Automatically regenerated by the program at each run, edit at your own risk\n";
-    BOOST_FOREACH(const po::variables_map::value_type &pair, _options){
-      ofs<<pair.first<<" = "<<pair.second.as<int>()<<"\n";
-    }
+    ofs<<"Down = "<<_keys.Down<<"\n";
+    ofs<<"Drop = "<<_keys.Drop<<"\n";
+    ofs<<"Left = "<<_keys.Left<<"\n";
+    ofs<<"Pause = "<<_keys.Pause<<"\n";
+    ofs<<"Right = "<<_keys.Right<<"\n";
+    ofs<<"RotateCCW = "<<_keys.RotateCCW<<"\n";
+    ofs<<"RotateCW = "<<_keys.RotateCW<<"\n";
+    ofs.close();
 
     ofstream ofs2(GetHighScoresFileName().c_str());
     ofs2<<"# Do not edit this file, Bastet sees you\n";
-
     boost::format scorer("Scorer%02d%02d");
     boost::format score("Score%02d%02d");
-
     for(int difficulty=0;difficulty<num_difficulties;++difficulty){
       int i=0;
       BOOST_FOREACH(const HighScore &hs, _hs[difficulty]){
@@ -192,5 +220,9 @@ namespace Bastet{
 	i++;
       }
     }
+  }
+
+  Config::~Config(){
+    Save();
   }
 }

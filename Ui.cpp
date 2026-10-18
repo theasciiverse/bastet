@@ -514,6 +514,7 @@ namespace Bastet{
     if(hs->Qualifies(_points)){
       string name=InputDialog(" Congratulations! You got a high score \n Please enter your name");
       hs->InsertHighScore(_points,name);
+      config.Save();
     }else{
       MessageDialog("You did not get into\n"
 		    "the high score list!\n"
@@ -549,5 +550,6 @@ namespace Bastet{
     keys->RotateCCW=KeyDialog(str(fmt % "rotate tetromino COUNTERCLOCKWISE"));
     keys->Drop=KeyDialog(str(fmt % "DROP tetromino (move down as much as possible immediately)"));
     keys->Pause=KeyDialog(str(fmt % "PAUSE the game"));
+    config.Save();
   }
 }

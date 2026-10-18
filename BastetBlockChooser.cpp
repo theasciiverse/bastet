@@ -147,6 +147,7 @@ namespace Bastet{
   BestScoreVisitor::BestScoreVisitor(int bonusLines):_score(GameOverScore),_bonusLines(bonusLines){};
   BestScoreVisitor::~BestScoreVisitor(){};
   void BestScoreVisitor::Visit(BlockType b, const Well *w, Vertex v){
+    if(v.IsOutOfScreen(b)) return; //game over: Lock would throw
     Well w2(*w); //copy
     try{
       int linescleared=w2.LockAndClearLines(b,v);
@@ -158,6 +159,7 @@ namespace Bastet{
   RecursiveVisitor::RecursiveVisitor(){_scores.fill(GameOverScore);}
   RecursiveVisitor::~RecursiveVisitor(){}
   void RecursiveVisitor::Visit(BlockType b, const Well *w, Vertex v){
+    if(v.IsOutOfScreen(b)) return; //game over: Lock would throw
     Well w2(*w); //copy
     try{
       int linescleared=w2.LockAndClearLines(b,v); //may throw GO
@@ -165,7 +167,7 @@ namespace Bastet{
 	try{
 	  BestScoreVisitor visitor(linescleared);
 	  BlockPosition p;
-	  if(!p.IsValid(BlockType(i),&w2)) throw(GameOver());
+	  if(!p.IsValid(BlockType(i),&w2)) continue; //game over for this block
 	  Searcher searcher(BlockType(i),&w2,p,&visitor);
 	  _scores[i]=max(_scores[i],visitor.GetScore());
 	} catch(const GameOver &go){}

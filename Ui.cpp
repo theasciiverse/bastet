@@ -22,6 +22,7 @@
 #include "BastetBlockChooser.hpp"
 #include "BlockChooser.hpp"
 
+#include <chrono>
 #include <cstdio>
 #include <cstdlib>
 #include <boost/format.hpp>
@@ -321,71 +322,81 @@ namespace Bastet{
     wrefresh(_scoreWin);
   }
 
-  //must be <1E+06, because it should fit into a timeval usec field(see man select)
+  //gravity: microseconds per row at each level
   static const boost::array<int,10> delay = {{999999, 770000, 593000, 457000, 352000, 271000, 208000, 160000, 124000, 95000}};
 
-  void Ui::DropBlock(BlockType b, Well *w){
-    fd_set in, tmp_in;
-    struct timeval time;
+  static long long NowMs(){
+    using namespace std::chrono;
+    return duration_cast<milliseconds>(steady_clock::now().time_since_epoch()).count();
+  }
 
-    FD_ZERO(&in);
-    FD_SET(0,&in); //adds stdin
-    
-    time.tv_sec=0;
-    time.tv_usec=delay[_level];
-    
-    //assumes nodelay(stdscr,TRUE) has already been called
+  ///Enter arrives as '\r' (nonl() is on), '\n' or KEY_ENTER, depending
+  ///on the terminal and the key; all three count as the same key
+  static int SameKey(int ch){
+    return (ch=='\r' || ch=='\n' || ch==KEY_ENTER) ? KEY_ENTER : ch;
+  }
+
+  void Ui::DropBlock(BlockType b, Well *w){
+    long long deadline=NowMs()+delay[_level]/1000;
+
     BlockPosition p;
 
     RedrawWell(w,b,p);
     Keys *keys=config.GetKeys();
 
     while(1){ //break = tetromino locked
-      tmp_in=in;
-      int sel_ret=select(FD_SETSIZE,&tmp_in, NULL, NULL, &time);
-      if(sel_ret==0){ //timeout
+      //waits in curses, not in select() on stdin: keys curses has
+      //already read are seen at once, and it works on Windows
+      long long left=deadline-NowMs();
+      int ch=ERR;
+      if(left>0){
+	timeout(int(left));
+	ch=getch();
+      }
+      if(ch==ERR){ //timeout
+	if(NowMs()<deadline) continue;
 	if(!p.MoveIfPossible(Down,b,w))
 	  break;
-	time.tv_sec=0;
-	time.tv_usec=delay[_level];
+	deadline=NowMs()+delay[_level]/1000;
       }
       else{ //keypress
-	int ch=getch();
-	if(ch==keys->Left)
+	ch=SameKey(ch);
+	if(ch==SameKey(keys->Left))
 	  p.MoveIfPossible(Left,b,w);
-	else if(ch==keys->Right)
+	else if(ch==SameKey(keys->Right))
 	  p.MoveIfPossible(Right,b,w);
-	else if(ch==keys->Down){
+	else if(ch==SameKey(keys->Down)){
 	  bool val=p.MoveIfPossible(Down,b,w);
 	  if(val){
 	    //_points++;
 	    //RedrawScore();
-	    time.tv_sec=0;
-	    time.tv_usec=delay[_level];
+	    deadline=NowMs()+delay[_level]/1000;
 	  }
 	  else break;
 	}
-	else if(ch==keys->RotateCW)
+	else if(ch==SameKey(keys->RotateCW))
 	  p.MoveIfPossible(RotateCW,b,w);
-	else if(ch==keys->RotateCCW)
+	else if(ch==SameKey(keys->RotateCCW))
 	  p.MoveIfPossible(RotateCCW,b,w);
-	else if(ch==keys->Drop){
+	else if(ch==SameKey(keys->Drop)){
 	  p.Drop(b,w);
 	  //_points+=2*fb.HardDrop(w);
 	  //RedrawScore();
 	  break;
 	}
-	else if(ch==keys->Pause){
+	else if(ch==SameKey(keys->Pause)){
+	  long long rest=deadline-NowMs(); //the pause does not count
 	  MessageDialog("Press SPACE or ENTER to resume the game");
+	  deadline=NowMs()+(rest>0 ? rest : 0);
 	  RedrawStatic();
 	  RedrawWell(w,b,p);
-	  nodelay(stdscr,TRUE);
 	}
 	else {} //default...
 
       } //keypress switch
       RedrawWell(w,b,p);
     } //while(1) 
+    nodelay(stdscr,TRUE);
 
     LinesCompleted lc=w->Lock(b,p);
     //locks also into _colors
@@ -476,7 +487,7 @@ namespace Bastet{
 	  whline(_wellWin, i%2?' ':':',WellWidth*2);
 	}
 	wrefresh(_wellWin);
-	usleep(500000/6);
+	napms(500/6);
       }
     }
   }

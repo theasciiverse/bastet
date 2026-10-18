@@ -115,7 +115,8 @@ namespace Bastet{
     
     //otherwise, returns the pos-th block, where pos is random
     static const boost::array<int,nBlockTypes> blockPercentages={{80, 92, 98, 100, 100, 100, 100}};
-    int pos=find_if(blockPercentages.begin(),blockPercentages.end(),bind2nd(greater_equal<int>(),random()%100)) - blockPercentages.begin();
+    const long r=random()%100;
+    int pos=find_if(blockPercentages.begin(),blockPercentages.end(),[r](int pct){return pct>=r;}) - blockPercentages.begin();
     assert(pos>=0 && pos<nBlockTypes);
 
     int chosenBlock=find(finalScores.begin(),finalScores.end(),temp[pos])-finalScores.begin();
@@ -154,7 +155,7 @@ namespace Bastet{
     }catch(const GameOver &go){}
   }
 
-  RecursiveVisitor::RecursiveVisitor(){_scores.assign(GameOverScore);}
+  RecursiveVisitor::RecursiveVisitor(){_scores.fill(GameOverScore);}
   RecursiveVisitor::~RecursiveVisitor(){}
   void RecursiveVisitor::Visit(BlockType b, const Well *w, Vertex v){
     Well w2(*w); //copy
@@ -211,7 +212,8 @@ namespace Bastet{
 
     //returns the pos-th block, where pos is random
     static const boost::array<int,nBlockTypes> blockPercentages={{80, 92, 98, 100, 100, 100, 100}};
-    int pos=find_if(blockPercentages.begin(),blockPercentages.end(),bind2nd(greater_equal<int>(),random()%100)) - blockPercentages.begin();
+    const long r=random()%100;
+    int pos=find_if(blockPercentages.begin(),blockPercentages.end(),[r](int pct){return pct>=r;}) - blockPercentages.begin();
     assert(pos>=0 && pos<nBlockTypes);
 
     int chosenBlock=find(finalScores.begin(),finalScores.end(),temp[pos])-finalScores.begin();

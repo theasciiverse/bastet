@@ -163,7 +163,7 @@ namespace Bastet{
     _scoreWin(7,14,_nextWin.GetMaxY(),_nextWin.GetMinX())
   {
     BOOST_FOREACH(ColorWellLine &a, _colors)
-      a.assign(0);
+      a.fill(0);
   }
 
   Dot BoundingRect(const std::string &message){ //returns x and y of the minimal rectangle containing the given string
@@ -400,7 +400,7 @@ namespace Bastet{
       //clears also _colors
       ColorWell::reverse_iterator it=lc.Clear(_colors.rbegin(),_colors.rend());
       for(;it!=_colors.rend();++it){
-	it->assign(0);
+	it->fill(0);
       }
       
       int newlines=lc._completed.count();
@@ -486,7 +486,7 @@ namespace Bastet{
     _points=0;
     _lines=0;
     BOOST_FOREACH(ColorWellLine &a, _colors)
-      a.assign(0);
+      a.fill(0);
     RedrawStatic();
     RedrawScore();
     Well w;

@@ -109,3 +109,9 @@ no reports, exit 0. Windows: cross-built with MinGW-w64 against PDCurses
 3.9 and run under Wine (a full game to the high score table, the name
 saved in `%APPDATA%\bastet\scores`); arrow keys under Wine's console are
 unchecked, as for nSnake. macOS: not built here.
+
+## Ours
+
+- **How to play it, at the top of README.** A short note on installing and
+  starting it with av, or from a release archive; the original text follows
+  unchanged.
